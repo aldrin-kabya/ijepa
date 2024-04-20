@@ -13,7 +13,7 @@ data:
   use_gaussian_blur: false
   use_horizontal_flip: false
 logging:
-  folder: $replace_this_with_path_for_experiment_logs/vith14.224-bs.2048-ep.300/
+  folder: /kaggle/working/
   write_tag: jepa
 mask:
   allow_overlap: false
