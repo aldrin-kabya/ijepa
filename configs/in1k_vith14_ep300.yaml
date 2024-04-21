@@ -6,7 +6,7 @@ data:
   - 1.0
   crop_size: 224
   image_folder: imagenet-mini
-  num_workers: 10
+  num_workers: 4
   pin_mem: true
   root_path: /kaggle/input/imagenetmini-1000/
   use_color_distortion: false
