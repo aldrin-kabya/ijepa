@@ -24,6 +24,8 @@ import yaml
 
 import numpy as np
 
+from tqdm import tqdm
+
 import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
@@ -264,7 +266,7 @@ def main(args, resume_preempt=False):
                 torch.save(save_dict, save_path.format(epoch=f'{epoch + 1}'))
 
     # -- TRAINING LOOP
-    for epoch in range(start_epoch, num_epochs):
+    for epoch in tqdm(range(start_epoch, num_epochs), desc="Epochs"):
         logger.info('Epoch %d' % (epoch + 1))
 
         # -- update distributed-data-loader epoch
