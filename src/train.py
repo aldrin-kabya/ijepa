@@ -265,8 +265,8 @@ def main(args, resume_preempt=False):
             if (epoch + 1) % checkpoint_freq == 0:
                 torch.save(save_dict, save_path.format(epoch=f'{epoch + 1}'))
                 
-       total_iterations = num_epochs * len(unsupervised_loader)
-       progress_bar = tqdm(total=total_iterations, desc="Training Progress")
+    total_iterations = num_epochs * len(unsupervised_loader)
+    progress_bar = tqdm(total=total_iterations, desc="Training Progress")
         
     # -- TRAINING LOOP
        for epoch in range(start_epoch, num_epochs):
