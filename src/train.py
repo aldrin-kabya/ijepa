@@ -276,8 +276,9 @@ def main(args, resume_preempt=False):
         maskA_meter = AverageMeter()
         maskB_meter = AverageMeter()
         time_meter = AverageMeter()
-
-        for itr, (udata, masks_enc, masks_pred) in enumerate(unsupervised_loader):
+        
+        progress_bar = tqdm(enumerate(unsupervised_loader), total=len(unsupervised_loader), desc=f"Epoch {epoch+1}")
+        for itr, (udata, masks_enc, masks_pred) in progress_bar:
 
             def load_imgs():
                 # -- unsupervised imgs
