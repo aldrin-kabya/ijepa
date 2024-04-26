@@ -264,9 +264,12 @@ def main(args, resume_preempt=False):
             torch.save(save_dict, latest_path)
             if (epoch + 1) % checkpoint_freq == 0:
                 torch.save(save_dict, save_path.format(epoch=f'{epoch + 1}'))
-
+                
+       total_iterations = num_epochs * len(unsupervised_loader)
+       progress_bar = tqdm(total=total_iterations, desc="Training Progress")
+        
     # -- TRAINING LOOP
-    for epoch in tqdm(range(start_epoch, num_epochs), desc="Epochs"):
+       for epoch in range(start_epoch, num_epochs):
         logger.info('Epoch %d' % (epoch + 1))
 
         # -- update distributed-data-loader epoch
@@ -277,8 +280,7 @@ def main(args, resume_preempt=False):
         maskB_meter = AverageMeter()
         time_meter = AverageMeter()
         
-        progress_bar = tqdm(enumerate(unsupervised_loader), total=len(unsupervised_loader), desc=f"Epoch {epoch+1}")
-        for itr, (udata, masks_enc, masks_pred) in progress_bar:
+        for itr, (udata, masks_enc, masks_pred) in enumerate(unsupervised_loader):
 
             def load_imgs():
                 # -- unsupervised imgs
@@ -372,6 +374,10 @@ def main(args, resume_preempt=False):
             log_stats()
 
             assert not np.isnan(loss), 'loss is nan'
+
+            # Update the single progress bar description with both epoch and iteration information
+            progress_bar.set_description(f"Epoch {epoch+1}/{num_epochs}, Iteration {itr+1}/{len(unsupervised_loader)}")
+            progress_bar.update(1)
 
         # -- Save Checkpoint after every epoch
         logger.info('avg. loss %.3f' % loss_meter.avg)
