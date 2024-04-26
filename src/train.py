@@ -269,7 +269,7 @@ def main(args, resume_preempt=False):
     progress_bar = tqdm(total=total_iterations, desc="Training Progress")
         
     # -- TRAINING LOOP
-       for epoch in range(start_epoch, num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         logger.info('Epoch %d' % (epoch + 1))
 
         # -- update distributed-data-loader epoch
