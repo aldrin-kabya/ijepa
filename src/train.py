@@ -376,7 +376,7 @@ def main(args, resume_preempt=False):
             assert not np.isnan(loss), 'loss is nan'
 
             # Update the single progress bar description with both epoch and iteration information
-            progress_bar.set_description(f"Epoch {epoch+1}/{num_epochs}, Iteration {itr+1}/{len(unsupervised_loader)}")
+            progress_bar.set_description(f"Epoch {epoch+1}/{num_epochs}, Iteration {itr+1}/{len(unsupervised_loader)}, Loss: {loss:.4f}")
             progress_bar.update(1)
 
         # -- Save Checkpoint after every epoch
