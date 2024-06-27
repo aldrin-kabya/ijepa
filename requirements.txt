@@ -1,7 +1,7 @@
 torch>=2.0
 torchvision
 pyyaml
-numpy
+numpy<2.0.0
 opencv-python
 submitit
 Pillow
