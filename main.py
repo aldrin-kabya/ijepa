@@ -11,6 +11,7 @@ import multiprocessing as mp
 
 import pprint
 import yaml
+import wandb
 
 from src.utils.distributed import init_distributed
 from src.train import main as app_main
