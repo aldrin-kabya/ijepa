@@ -72,7 +72,8 @@ def main(args, resume_preempt=False):
     # Initialize W&B
     wandb.init(
         project="ijepa-training",
-        entity="I-JEPA-ViT-Experiment",
+        entity="aldrin-kabya04",
+        name="I-JEPA-ViT-Experiment",
         config=args
     )
 
