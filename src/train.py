@@ -69,6 +69,13 @@ logger = logging.getLogger()
 
 def main(args, resume_preempt=False):
 
+    # Initialize W&B
+    wandb.init(
+        project="ijepa-training",
+        entity="I-JEPA-ViT-Experiment",
+        config=args
+    )
+
     # ----------------------------------------------------------------------- #
     #  PASSED IN PARAMS FROM CONFIG FILE
     # ----------------------------------------------------------------------- #
