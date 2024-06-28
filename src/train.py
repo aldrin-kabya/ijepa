@@ -21,6 +21,7 @@ import copy
 import logging
 import sys
 import yaml
+import wandb
 
 import numpy as np
 
