@@ -50,15 +50,8 @@ def process_main(rank, fname, world_size, devices):
 
     world_size, rank = init_distributed(rank_and_world_size=(rank, world_size))
     logger.info(f'Running... (rank: {rank}/{world_size})')
-""
-    wandb.init(project="ijepa-training", 
-               name=f"I-JEPA-ViT-Experiment (Rank {rank})", # Include rank in the name
-               config=params,
-               group="ijepa-training-group")  # Add a group to associate runs
-""  
-    app_main(args=params)
 
-#    wandb.finish()
+    app_main(args=params)
 
 
 if __name__ == '__main__':
