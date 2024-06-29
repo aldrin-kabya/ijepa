@@ -73,7 +73,7 @@ def main(args, resume_preempt=False):
     wandb.init(
         project="ijepa-training",
         entity="aldrin-kabya04",
-        name="I-JEPA-ViT-Experiment",
+        resume="allow",
         config=args
     )
 
