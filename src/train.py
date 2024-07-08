@@ -69,6 +69,8 @@ logger = logging.getLogger()
 
 def main(args, resume_preempt=False):
 
+    wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
+
     # Initialize W&B
     wandb.init(
         project="ijepa-training",
