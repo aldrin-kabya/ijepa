@@ -21,8 +21,8 @@ mask:
   - 0.75
   - 1.5
   enc_mask_scale:
-  - 0.7
-  - 0.8
+  - 0.85
+  - 1.0
   min_keep: 10
   num_enc_masks: 1
   num_pred_masks: 4
@@ -42,7 +42,7 @@ optimization:
   ema:
   - 0.996
   - 1.0
-  epochs: 300
+  epochs: 600
   final_lr: 1.0e-06
   final_weight_decay: 0.4
   ipe_scale: 1.0
