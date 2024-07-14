@@ -75,7 +75,7 @@ def main(args, resume_preempt=False):
     wandb.init(
         project="ijepa-training",
         entity="aldrin-kabya04",
-        #id="ldiwqok2",
+        id="dmuud8ry",
         resume="allow",
         config=args
     )
