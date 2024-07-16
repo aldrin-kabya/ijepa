@@ -44,7 +44,7 @@ from src.utils.logging import (
     grad_logger,
     AverageMeter)
 from src.utils.tensors import repeat_interleave_batch
-from src.datasets.imagenet1k import make_imagenet1k
+from src.datasets.bing_rgb import make_bingrgb
 
 from src.helper import (
     load_checkpoint,
@@ -202,19 +202,29 @@ def main(args, resume_preempt=False):
         color_jitter=color_jitter)
 
     # -- init data-loaders/samplers
-    _, unsupervised_loader, unsupervised_sampler = make_imagenet1k(
+    # _, unsupervised_loader, unsupervised_sampler = make_imagenet1k(
+    #         transform=transform,
+    #         batch_size=batch_size,
+    #         collator=mask_collator,
+    #         pin_mem=pin_mem,
+    #         training=True,
+    #         num_workers=num_workers,
+    #         world_size=world_size,
+    #         rank=rank,
+    #         root_path=root_path,
+    #         image_folder=image_folder,
+    #         copy_data=copy_data,
+    #         drop_last=True)
+
+    dataset, unsupervised_loader = make_bingrgb(
+            image_file=os.path.join(root_path, 'train', 'dhaka_train.tif'),
+            label_file=os.path.join(root_path, 'train', 'dhaka_train_gt.tif'),
             transform=transform,
             batch_size=batch_size,
-            collator=mask_collator,
-            pin_mem=pin_mem,
-            training=True,
             num_workers=num_workers,
-            world_size=world_size,
-            rank=rank,
-            root_path=root_path,
-            image_folder=image_folder,
-            copy_data=copy_data,
+            pin_mem=pin_mem,
             drop_last=True)
+
     ipe = len(unsupervised_loader)
 
     # -- init optimizer and scheduler
