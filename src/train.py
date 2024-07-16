@@ -1,24 +1,55 @@
-# train.py
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+#
+
 import os
+
+# -- FOR DISTRIBUTED TRAINING ENSURE ONLY 1 DEVICE VISIBLE PER PROCESS
+try:
+    # -- WARNING: IF DOING DISTRIBUTED TRAINING ON A NON-SLURM CLUSTER, MAKE
+    # --          SURE TO UPDATE THIS TO GET LOCAL-RANK ON NODE, OR ENSURE
+    # --          THAT YOUR JOBS ARE LAUNCHED WITH ONLY 1 DEVICE VISIBLE
+    # --          TO EACH PROCESS
+    os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['SLURM_LOCALID']
+except Exception:
+    pass
+
 import copy
 import logging
 import sys
 import yaml
 import wandb
+
 import numpy as np
+
 from tqdm import tqdm
+
 import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
+
 from src.masks.multiblock import MaskCollator as MBMaskCollator
 from src.masks.utils import apply_masks
-from src.utils.distributed import init_distributed, AllReduce
-from src.utils.logging import CSVLogger, gpu_timer, grad_logger, AverageMeter
+from src.utils.distributed import (
+    init_distributed,
+    AllReduce
+)
+from src.utils.logging import (
+    CSVLogger,
+    gpu_timer,
+    grad_logger,
+    AverageMeter)
 from src.utils.tensors import repeat_interleave_batch
-# from src.datasets.imagenet1k import make_imagenet1k
-from src.datasets.bing_rgb import make_bingrgb  # Import the new dataset loader
-from src.helper import load_checkpoint, init_model, init_opt
+from src.datasets.bing_rgb import make_bingrgb
+
+from src.helper import (
+    load_checkpoint,
+    init_model,
+    init_opt)
 from src.transforms import make_transforms
 
 # --
@@ -35,14 +66,15 @@ torch.backends.cudnn.benchmark = True
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
 
+
 def main(args, resume_preempt=False):
 
-    # wandb.login(key="your_wandb_key")
+    # wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
 
     # wandb.init(
     #     project="ijepa-training",
-    #     entity="your_entity",
-    #     id="your_id",
+    #     entity="aldrin-kabya04",
+    #     id="dmuud8ry",
     #     resume="allow",
     #     config=args
     # )
@@ -183,137 +215,212 @@ def main(args, resume_preempt=False):
     #         image_folder=image_folder,
     #         copy_data=copy_data,
     #         drop_last=True)
+
     dataset, unsupervised_loader = make_bingrgb(
-        image_file=os.path.join(root_path, 'train', 'dhaka_train.tif'),
-        label_file=os.path.join(root_path, 'train', 'dhaka_train_gt.tif'),
-        transform=transform,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        pin_mem=pin_mem,
-        drop_last=True)
+            image_file=os.path.join(root_path, 'train', 'dhaka_train.tif'),
+            label_file=os.path.join(root_path, 'train', 'dhaka_train_gt.tif'),
+            transform=transform,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_mem=pin_mem,
+            drop_last=True)
 
-    logger.info('Created ImageNet dataloaders.')
+    ipe = len(unsupervised_loader)
 
-    # -- init optimizer
-    param_groups = [
-        {'params': encoder.parameters()},
-        {'params': predictor.parameters()}]
-    opt, scheduler, steps_per_epoch = init_opt(param_groups, batch_size,
-                                               start_lr, lr, final_lr,
-                                               num_epochs, warmup,
-                                               wd, final_wd, ipe_scale,
-                                               unsupervised_loader)
+    # -- init optimizer and scheduler
+    optimizer, scaler, scheduler, wd_scheduler = init_opt(
+        encoder=encoder,
+        predictor=predictor,
+        wd=wd,
+        final_wd=final_wd,
+        start_lr=start_lr,
+        ref_lr=lr,
+        final_lr=final_lr,
+        iterations_per_epoch=ipe,
+        warmup=warmup,
+        num_epochs=num_epochs,
+        ipe_scale=ipe_scale,
+        use_bfloat16=use_bfloat16)
+    encoder = DistributedDataParallel(encoder, static_graph=True)
+    predictor = DistributedDataParallel(predictor, static_graph=True)
+    target_encoder = DistributedDataParallel(target_encoder)
+    for p in target_encoder.parameters():
+        p.requires_grad = False
 
-    # -- init EMA
-    if ema:
-        logger.info('Using EMA.')
-        for param in target_encoder.parameters():
-            param.detach_()
-        source_params = list(encoder.parameters())
-        target_params = list(target_encoder.parameters())
-        alpha = 0.996
-        one_minus_alpha = 1. - alpha
+    # -- momentum schedule
+    momentum_scheduler = (ema[0] + i*(ema[1]-ema[0])/(ipe*num_epochs*ipe_scale)
+                          for i in range(int(ipe*num_epochs*ipe_scale)+1))
 
-    # -- init AMP
-    if use_bfloat16:
-        scaler = torch.cuda.amp.GradScaler()
-    else:
-        scaler = None
-
-    # -- init model to device
-    encoder.to(device)
-    predictor.to(device)
-    target_encoder.to(device)
-
+    start_epoch = 0
+    # -- load training checkpoint
     if load_model:
-        ckpt = load_checkpoint(load_path, device)
-        encoder.load_state_dict(ckpt['encoder'])
-        predictor.load_state_dict(ckpt['predictor'])
-        target_encoder.load_state_dict(ckpt['target_encoder'])
-        opt.load_state_dict(ckpt['opt'])
-        scheduler.load_state_dict(ckpt['scheduler'])
-        start_epoch = ckpt['epoch'] + 1
-        logger.info(f'Read checkpoint {load_path} epoch {start_epoch}')
-    else:
-        start_epoch = 0
-        logger.info('No checkpoint, training from scratch.')
-
-    encoder = DistributedDataParallel(encoder, device_ids=[device])
-    predictor = DistributedDataParallel(predictor, device_ids=[device])
-
-    logger.info('Starting main training loop')
-    for epoch in range(start_epoch, num_epochs):
-
-        encoder.train()
-        predictor.train()
-        if ema:
-            target_encoder.train()
-
-        unsupervised_loader.sampler.set_epoch(epoch)
-
-        unsupervised_loader_iter = iter(unsupervised_loader)
-
-        if rank == 0:
-            pbar = tqdm(total=steps_per_epoch, desc=f'Epoch {epoch}')
-        else:
-            pbar = None
-
-        for i in range(steps_per_epoch):
-            data, mask = next(unsupervised_loader_iter)
-            data = data.to(device, non_blocking=True)
-            mask = mask.to(device, non_blocking=True)
-
-            opt.zero_grad(set_to_none=True)
-
-            with torch.cuda.amp.autocast(scaler is not None):
-                emb_enc = encoder(data)
-                emb_pred = predictor(apply_masks(emb_enc, mask))
-                loss = F.mse_loss(emb_enc, emb_pred)
-                assert not torch.isnan(loss), 'Loss is NaN.'
-
-            if scaler is not None:
-                scaler.scale(loss).backward()
-                scaler.step(opt)
-                scaler.update()
-            else:
-                loss.backward()
-                opt.step()
-
+        encoder, predictor, target_encoder, optimizer, scaler, start_epoch = load_checkpoint(
+            device=device,
+            r_path=load_path,
+            encoder=encoder,
+            predictor=predictor,
+            target_encoder=target_encoder,
+            opt=optimizer,
+            scaler=scaler)
+        for _ in range(start_epoch*ipe):
             scheduler.step()
+            wd_scheduler.step()
+            next(momentum_scheduler)
+            mask_collator.step()
 
-            if ema:
-                for j in range(len(source_params)):
-                    target_params[j].mul_(alpha)
-                    target_params[j].add_(source_params[j].detach().mul_(one_minus_alpha))
-
-            if rank == 0:
-                pbar.update(1)
-                if i % log_freq == 0:
-                    l_maskA, l_maskB = mask_collator.loss_terms()
-                    time_ms = gpu_timer(False)
-                    csv_logger.log(epoch, i, loss.item(), l_maskA, l_maskB, time_ms)
-                    log_info = {
-                        "epoch": epoch,
-                        "iteration": i,
-                        "loss": loss.item(),
-                        "mask_A": l_maskA,
-                        "mask_B": l_maskB,
-                        "time_ms": time_ms
-                    }
-                    # wandb.log(log_info)
-
+    def save_checkpoint(epoch):
+        save_dict = {
+            'encoder': encoder.state_dict(),
+            'predictor': predictor.state_dict(),
+            'target_encoder': target_encoder.state_dict(),
+            'opt': optimizer.state_dict(),
+            'scaler': None if scaler is None else scaler.state_dict(),
+            'epoch': epoch,
+            'loss': loss_meter.avg,
+            'batch_size': batch_size,
+            'world_size': world_size,
+            'lr': lr
+        }
         if rank == 0:
-            pbar.close()
-            save_dict = {
-                'encoder': encoder.module.state_dict(),
-                'predictor': predictor.module.state_dict(),
-                'target_encoder': target_encoder.state_dict(),
-                'opt': opt.state_dict(),
-                'scheduler': scheduler.state_dict(),
-                'epoch': epoch}
             torch.save(save_dict, latest_path)
-            if (epoch % checkpoint_freq == 0) or ((epoch+1) == num_epochs):
-                torch.save(save_dict, save_path)
+            if (epoch + 1) % checkpoint_freq == 0:
+                torch.save(save_dict, save_path.format(epoch=f'{epoch + 1}'))
+                
+    total_iterations = num_epochs * len(unsupervised_loader)
+    progress_bar = tqdm(total=len(unsupervised_loader), desc="Training Progress")
+        
+    # -- TRAINING LOOP
+    for epoch in range(start_epoch, num_epochs):
+        logger.info('Epoch %d' % (epoch + 1))
 
-    csv_logger.close()
-    logger.info('Training completed successfully.')
+        # -- update distributed-data-loader epoch
+        unsupervised_sampler.set_epoch(epoch)
+
+        loss_meter = AverageMeter()
+        maskA_meter = AverageMeter()
+        maskB_meter = AverageMeter()
+        time_meter = AverageMeter()
+        
+        for itr, (udata, masks_enc, masks_pred) in enumerate(unsupervised_loader):
+
+            def load_imgs():
+                # -- unsupervised imgs
+                imgs = udata[0].to(device, non_blocking=True)
+                masks_1 = [u.to(device, non_blocking=True) for u in masks_enc]
+                masks_2 = [u.to(device, non_blocking=True) for u in masks_pred]
+                return (imgs, masks_1, masks_2)
+            imgs, masks_enc, masks_pred = load_imgs()
+            maskA_meter.update(len(masks_enc[0][0]))
+            maskB_meter.update(len(masks_pred[0][0]))
+
+            def train_step():
+                _new_lr = scheduler.step()
+                _new_wd = wd_scheduler.step()
+                # --
+
+                def forward_target():
+                    with torch.no_grad():
+                        h = target_encoder(imgs)
+                        h = F.layer_norm(h, (h.size(-1),))  # normalize over feature-dim
+                        B = len(h)
+                        # -- create targets (masked regions of h)
+                        h = apply_masks(h, masks_pred)
+                        h = repeat_interleave_batch(h, B, repeat=len(masks_enc))
+                        return h
+
+                def forward_context():
+                    z = encoder(imgs, masks_enc)
+                    z = predictor(z, masks_enc, masks_pred)
+                    return z
+
+                def loss_fn(z, h):
+                    loss = F.smooth_l1_loss(z, h)
+                    loss = AllReduce.apply(loss)
+                    return loss
+
+                # Step 1. Forward
+                with torch.cuda.amp.autocast(dtype=torch.bfloat16, enabled=use_bfloat16):
+                    h = forward_target()
+                    z = forward_context()
+                    loss = loss_fn(z, h)
+
+                #  Step 2. Backward & step
+                if use_bfloat16:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
+                grad_stats = grad_logger(encoder.named_parameters())
+                optimizer.zero_grad()
+
+                # Step 3. momentum update of target encoder
+                with torch.no_grad():
+                    m = next(momentum_scheduler)
+                    for param_q, param_k in zip(encoder.parameters(), target_encoder.parameters()):
+                        param_k.data.mul_(m).add_((1.-m) * param_q.detach().data)
+
+                return (float(loss), _new_lr, _new_wd, grad_stats)
+            (loss, _new_lr, _new_wd, grad_stats), etime = gpu_timer(train_step)
+            loss_meter.update(loss)
+            time_meter.update(etime)
+
+            # -- Logging
+            def log_stats():
+                csv_logger.log(epoch + 1, itr, loss, maskA_meter.val, maskB_meter.val, etime)
+                if (itr % log_freq == 0) or np.isnan(loss) or np.isinf(loss):
+                    logger.info('[%d, %5d] loss: %.3f '
+                                'masks: %.1f %.1f '
+                                '[wd: %.2e] [lr: %.2e] '
+                                '[mem: %.2e] '
+                                '(%.1f ms)'
+                                % (epoch + 1, itr,
+                                   loss_meter.avg,
+                                   maskA_meter.avg,
+                                   maskB_meter.avg,
+                                   _new_wd,
+                                   _new_lr,
+                                   torch.cuda.max_memory_allocated() / 1024.**2,
+                                   time_meter.avg))
+
+                    if grad_stats is not None:
+                        logger.info('[%d, %5d] grad_stats: [%.2e %.2e] (%.2e, %.2e)'
+                                    % (epoch + 1, itr,
+                                       grad_stats.first_layer,
+                                       grad_stats.last_layer,
+                                       grad_stats.min,
+                                       grad_stats.max))
+
+            log_stats()
+
+            assert not np.isnan(loss), 'loss is nan'
+
+            # Log metrics to W&B
+            # wandb.log({
+            #     "epoch": epoch + 1, 
+            #     "iteration": itr,
+            #     "loss": loss_meter.avg, 
+            #     "mask-A": maskA_meter.avg,
+            #     "mask-B": maskB_meter.avg,
+            #     "time (ms)": time_meter.avg,
+            #     "lr": _new_lr,
+            #     "wd": _new_wd,
+            #     "grad_stats/first_layer": grad_stats.first_layer, 
+            #     "grad_stats/last_layer": grad_stats.last_layer,
+            #     "grad_stats/min": grad_stats.min,
+            #     "grad_stats/max": grad_stats.max,
+            #     "memory (GB)": torch.cuda.max_memory_allocated() / 1024.**3,
+            # })
+
+            # Update the single progress bar description with both epoch and iteration information
+            progress_bar.set_description(f"Epoch {epoch+1}/{num_epochs}, Iteration {itr+1}/{len(unsupervised_loader)}, Loss: {loss:.4f}")
+            progress_bar.update(1)
+
+        # -- Save Checkpoint after every epoch
+        logger.info('avg. loss %.3f' % loss_meter.avg)
+        save_checkpoint(epoch+1)
+
+
+if __name__ == "__main__":
+    main()
