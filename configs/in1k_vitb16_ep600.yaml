@@ -8,7 +8,7 @@ data:
   image_folder: imagenet-mini
   num_workers: 4
   pin_mem: true
-  root_path: /kaggle/input/imagenetmini-1000/
+  root_path: /kaggle/input/bingrgb
   use_color_distortion: false
   use_gaussian_blur: false
   use_horizontal_flip: false
