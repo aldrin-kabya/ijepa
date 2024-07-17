@@ -1,10 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-#
-
 import os
 import subprocess
 import time
@@ -91,7 +84,7 @@ class ImageNet(torchvision.datasets.ImageFolder):
         :param index_targets: whether to index the id of each labeled image
         """
 
-        suffix = 'image_patches/' if train else 'val/'
+        suffix = 'train/' if train else 'val/'
         data_path = None
         if copy_data:
             logger.info('copying data locally')
@@ -106,25 +99,25 @@ class ImageNet(torchvision.datasets.ImageFolder):
             data_path = os.path.join(root, image_folder, suffix)
         logger.info(f'data-path {data_path}')
 
-        super(ImageNet, self).__init__(root=data_path, transform=transform)
+        self.samples = []
+        for root_dir, _, files in os.walk(data_path):
+            for file in files:
+                if file.endswith(('.png', '.jpg', '.jpeg')):
+                    self.samples.append(os.path.join(root_dir, file))
+        
+        self.loader = torchvision.datasets.folder.default_loader
+        self.transform = transform
         logger.info('Initialized ImageNet')
 
-        if index_targets:
-            self.targets = []
-            for sample in self.samples:
-                self.targets.append(sample[1])
-            self.targets = np.array(self.targets)
-            self.samples = np.array(self.samples)
+    def __len__(self):
+        return len(self.samples)
 
-            mint = None
-            self.target_indices = []
-            for t in range(len(self.classes)):
-                indices = np.squeeze(np.argwhere(
-                    self.targets == t)).tolist()
-                self.target_indices.append(indices)
-                mint = len(indices) if mint is None else min(mint, len(indices))
-                logger.debug(f'num-labeled target {t} {len(indices)}')
-            logger.info(f'min. labeled indices {mint}')
+    def __getitem__(self, index):
+        path = self.samples[index]
+        img = self.loader(path)
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, 0  # Since we have no classes, return a dummy label
 
 
 class ImageNetSubset(object):
@@ -142,36 +135,21 @@ class ImageNetSubset(object):
 
     def filter_dataset_(self, subset_file):
         """ Filter self.dataset to a subset """
-        root = self.dataset.root
-        class_to_idx = self.dataset.class_to_idx
-        # -- update samples to subset of IN1k targets/samples
         new_samples = []
         logger.info(f'Using {subset_file}')
         with open(subset_file, 'r') as rfile:
             for line in rfile:
-                class_name = line.split('_')[0]
-                target = class_to_idx[class_name]
-                img = line.split('\n')[0]
-                new_samples.append(
-                    (os.path.join(root, class_name, img), target)
-                )
-        self.samples = new_samples
-
-    @property
-    def classes(self):
-        return self.dataset.classes
+                img = line.strip()
+                img_path = os.path.join(self.dataset.root, img)
+                if os.path.exists(img_path):
+                    new_samples.append(img_path)
+        self.dataset.samples = new_samples
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.dataset.samples)
 
     def __getitem__(self, index):
-        path, target = self.samples[index]
-        img = self.dataset.loader(path)
-        if self.dataset.transform is not None:
-            img = self.dataset.transform(img)
-        if self.dataset.target_transform is not None:
-            target = self.dataset.target_transform(target)
-        return img, target
+        return self.dataset[index]
 
 
 def copy_imgnt_locally(
