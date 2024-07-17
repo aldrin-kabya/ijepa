@@ -44,7 +44,7 @@ from src.utils.logging import (
     grad_logger,
     AverageMeter)
 from src.utils.tensors import repeat_interleave_batch
-from src.datasets.bing_rgb import make_bingrgb
+from src.datasets.bing_rgb import make_imagenet1k
 
 from src.helper import (
     load_checkpoint,
@@ -69,8 +69,9 @@ logger = logging.getLogger()
 
 def main(args, resume_preempt=False):
 
-    # wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
+    wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
 
+    # Initialize W&B
     # wandb.init(
     #     project="ijepa-training",
     #     entity="aldrin-kabya04",
@@ -202,29 +203,19 @@ def main(args, resume_preempt=False):
         color_jitter=color_jitter)
 
     # -- init data-loaders/samplers
-    # _, unsupervised_loader, unsupervised_sampler = make_imagenet1k(
-    #         transform=transform,
-    #         batch_size=batch_size,
-    #         collator=mask_collator,
-    #         pin_mem=pin_mem,
-    #         training=True,
-    #         num_workers=num_workers,
-    #         world_size=world_size,
-    #         rank=rank,
-    #         root_path=root_path,
-    #         image_folder=image_folder,
-    #         copy_data=copy_data,
-    #         drop_last=True)
-
-    dataset, unsupervised_loader = make_bingrgb(
-            image_file=os.path.join(root_path, 'train', 'dhaka_train.tif'),
-            label_file=os.path.join(root_path, 'train', 'dhaka_train_gt.tif'),
+    _, unsupervised_loader, unsupervised_sampler = make_imagenet1k(
             transform=transform,
             batch_size=batch_size,
-            num_workers=num_workers,
+            collator=mask_collator,
             pin_mem=pin_mem,
+            training=True,
+            num_workers=num_workers,
+            world_size=world_size,
+            rank=rank,
+            root_path=root_path,
+            image_folder=image_folder,
+            copy_data=copy_data,
             drop_last=True)
-
     ipe = len(unsupervised_loader)
 
     # -- init optimizer and scheduler
