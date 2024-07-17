@@ -13,7 +13,7 @@ _GLOBAL_SEED = 0
 logger = getLogger()
 
 
-def make_imagenet1k(
+def make_bingrgb(
     transform,
     batch_size,
     collator=None,
@@ -28,7 +28,7 @@ def make_imagenet1k(
     drop_last=True,
     subset_file=None
 ):
-    dataset = ImageNet(
+    dataset = BingRGB(
         root=root_path,
         image_folder=image_folder,
         transform=transform,
@@ -36,7 +36,7 @@ def make_imagenet1k(
         copy_data=copy_data,
         index_targets=False)
     if subset_file is not None:
-        dataset = ImageNetSubset(dataset, subset_file)
+        dataset = BingRGBSubset(dataset, subset_file)
     logger.info('BingRGB dataset created')
     dist_sampler = torch.utils.data.distributed.DistributedSampler(
         dataset=dataset,
@@ -56,7 +56,7 @@ def make_imagenet1k(
     return dataset, data_loader, dist_sampler
 
 
-class ImageNet(torchvision.datasets.ImageFolder):
+class BingRGB(torchvision.datasets.ImageFolder):
 
     def __init__(
         self,
@@ -71,11 +71,11 @@ class ImageNet(torchvision.datasets.ImageFolder):
         index_targets=False
     ):
         """
-        ImageNet
+        BingRGB
 
         Dataset wrapper (can copy data locally to machine)
 
-        :param root: root network directory for ImageNet data
+        :param root: root network directory for BingRGB data
         :param image_folder: path to images inside root network directory
         :param tar_file: zipped image_folder inside root network directory
         :param train: whether to load train data (or validation)
@@ -107,7 +107,7 @@ class ImageNet(torchvision.datasets.ImageFolder):
         
         self.loader = torchvision.datasets.folder.default_loader
         self.transform = transform
-        logger.info('Initialized ImageNet')
+        logger.info('Initialized BingRGB')
 
     def __len__(self):
         return len(self.samples)
@@ -120,13 +120,13 @@ class ImageNet(torchvision.datasets.ImageFolder):
         return img, 0  # Since we have no classes, return a dummy label
 
 
-class ImageNetSubset(object):
+class BingRGBSubset(object):
 
     def __init__(self, dataset, subset_file):
         """
-        ImageNetSubset
+        BingRGBSubset
 
-        :param dataset: ImageNet dataset object
+        :param dataset: BingRGB dataset object
         :param subset_file: '.txt' file containing IDs of IN1K images to keep
         """
         self.dataset = dataset

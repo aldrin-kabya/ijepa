@@ -44,7 +44,7 @@ from src.utils.logging import (
     grad_logger,
     AverageMeter)
 from src.utils.tensors import repeat_interleave_batch
-from src.datasets.bing_rgb import make_imagenet1k
+from src.datasets.bing_rgb import make_bingrgb
 
 from src.helper import (
     load_checkpoint,
@@ -69,15 +69,15 @@ logger = logging.getLogger()
 
 def main(args, resume_preempt=False):
 
-    # wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
+    wandb.login(key="0ff532320dc53aecefbcee8b10f1fb5ecc6c45bb")
 
-    # wandb.init(
-    #     project="ijepa-training",
-    #     entity="aldrin-kabya04",
-    #     id="dmuud8ry",
-    #     resume="allow",
-    #     config=args
-    # )
+    wandb.init(
+        project="ijepa-training",
+        entity="aldrin-kabya04",
+        #id="dmuud8ry",
+        resume="allow",
+        config=args
+    )
 
     # ----------------------------------------------------------------------- #
     #  PASSED IN PARAMS FROM CONFIG FILE
@@ -202,7 +202,7 @@ def main(args, resume_preempt=False):
         color_jitter=color_jitter)
 
     # -- init data-loaders/samplers
-    _, unsupervised_loader, unsupervised_sampler = make_imagenet1k(
+    _, unsupervised_loader, unsupervised_sampler = make_bingrgb(
             transform=transform,
             batch_size=batch_size,
             collator=mask_collator,
@@ -387,21 +387,21 @@ def main(args, resume_preempt=False):
             assert not np.isnan(loss), 'loss is nan'
 
             # Log metrics to W&B
-            # wandb.log({
-            #     "epoch": epoch + 1, 
-            #     "iteration": itr,
-            #     "loss": loss_meter.avg, 
-            #     "mask-A": maskA_meter.avg,
-            #     "mask-B": maskB_meter.avg,
-            #     "time (ms)": time_meter.avg,
-            #     "lr": _new_lr,
-            #     "wd": _new_wd,
-            #     "grad_stats/first_layer": grad_stats.first_layer, 
-            #     "grad_stats/last_layer": grad_stats.last_layer,
-            #     "grad_stats/min": grad_stats.min,
-            #     "grad_stats/max": grad_stats.max,
-            #     "memory (GB)": torch.cuda.max_memory_allocated() / 1024.**3,
-            # })
+            wandb.log({
+                "epoch": epoch + 1, 
+                "iteration": itr,
+                "loss": loss_meter.avg, 
+                "mask-A": maskA_meter.avg,
+                "mask-B": maskB_meter.avg,
+                "time (ms)": time_meter.avg,
+                "lr": _new_lr,
+                "wd": _new_wd,
+                "grad_stats/first_layer": grad_stats.first_layer, 
+                "grad_stats/last_layer": grad_stats.last_layer,
+                "grad_stats/min": grad_stats.min,
+                "grad_stats/max": grad_stats.max,
+                "memory (GB)": torch.cuda.max_memory_allocated() / 1024.**3
+            })
 
             # Update the single progress bar description with both epoch and iteration information
             progress_bar.set_description(f"Epoch {epoch+1}/{num_epochs}, Iteration {itr+1}/{len(unsupervised_loader)}, Loss: {loss:.4f}")
